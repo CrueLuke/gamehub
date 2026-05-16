@@ -1,5 +1,48 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Dekorativní pozadí — X a O rozmístěná po stranách */
+.bg-decorations {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.deco {
+  position: absolute;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.13;
+}
+
+.deco-x {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M22 22 L78 78 M78 22 L22 78' stroke='white' stroke-width='14' stroke-linecap='round' fill='none'/></svg>");
+}
+
+.deco-o {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='32' stroke='white' stroke-width='14' fill='none'/></svg>");
+}
+
+.deco-pos-1 { top: 7%;    left: 4%;    width: 130px; height: 130px; transform: rotate(-18deg); }
+.deco-pos-2 { top: 18%;   right: 5%;   width: 110px; height: 110px; transform: rotate(15deg); }
+.deco-pos-3 { top: 42%;   left: 8%;    width: 90px;  height: 90px;  transform: rotate(22deg); }
+.deco-pos-4 { top: 58%;   right: 8%;   width: 130px; height: 130px; transform: rotate(-12deg); }
+.deco-pos-5 { bottom: 10%; left: 6%;   width: 100px; height: 100px; transform: rotate(8deg); }
+.deco-pos-6 { bottom: 16%; right: 4%;  width: 85px;  height: 85px;  transform: rotate(-25deg); }
+.deco-pos-7 { top: 73%;   left: 2%;    width: 75px;  height: 75px;  transform: rotate(-30deg); opacity: 0.09; }
+.deco-pos-8 { top: 4%;    right: 22%;  width: 60px;  height: 60px;  transform: rotate(20deg);  opacity: 0.08; }
+
+/* Obsah musí být nad dekoracemi */
+.screen { position: relative; z-index: 1; }
+
+/* Na úzkých obrazovkách (mobil) dekorace skryj — netřeba je tam */
+@media (max-width: 768px) {
+  .bg-decorations { display: none; }
+}
+
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
