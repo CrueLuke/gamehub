@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Piškvorky</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Přihlášení / Registrace -->
+  <div id="auth-screen" class="screen">
+    <h1>Piškvorky</h1>
+    <div class="card">
+      <div class="tabs">
+        <button id="tab-login" class="tab active" type="button">Přihlášení</button>
+        <button id="tab-register" class="tab" type="button">Registrace</button>
+      </div>
+      <form id="auth-form">
+        <input type="text" id="username" placeholder="Jméno" autocomplete="username" required>
+        <input type="password" id="password" placeholder="Heslo" autocomplete="current-password" required>
+        <button type="submit" id="auth-submit">Přihlásit</button>
+        <p id="auth-error" class="error" role="alert"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Hlavní menu -->
+  <div id="menu-screen" class="screen hidden">
+    <header>
+      <span>Ahoj, <strong id="welcome-name"></strong></span>
+      <button id="logout-btn" class="link-btn" type="button">Odhlásit</button>
+    </header>
+    <h1>Piškvorky</h1>
+
+    <div class="stats-grid">
+      <div class="stats-section">
+        <div class="stats-title">vs AI</div>
+        <div class="stats-row">
+          <div class="stat win"><span class="num" id="stat-ai-wins">0</span><span class="label">Výhry</span></div>
+          <div class="stat loss"><span class="num" id="stat-ai-losses">0</span><span class="label">Prohry</span></div>
+          <div class="stat draw"><span class="num" id="stat-ai-draws">0</span><span class="label">Remízy</span></div>
+        </div>
+      </div>
+      <div class="stats-section">
+        <div class="stats-title">vs Hráč</div>
+        <div class="stats-row">
+          <div class="stat win"><span class="num" id="stat-pvp-wins">0</span><span class="label">Výhry</span></div>
+          <div class="stat loss"><span class="num" id="stat-pvp-losses">0</span><span class="label">Prohry</span></div>
+          <div class="stat draw"><span class="num" id="stat-pvp-draws">0</span><span class="label">Remízy</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button id="play-classic-btn" class="big-btn primary" type="button">Hrát 3×3 (vs AI)</button>
+      <button id="play-open-btn" class="big-btn" type="button">Hrát velkou plochu — 5 v řadě (vs AI)</button>
+      <button id="play-pvp-btn" class="big-btn pvp" type="button">Hrát s kamarádem</button>
+    </div>
+  </div>
+
+  <!-- Výběr obtížnosti (pro AI) -->
+  <div id="difficulty-screen" class="screen hidden">
+    <header>
+      <button id="diff-back-btn" class="link-btn" type="button">← Zpět</button>
+      <span id="difficulty-mode-label"></span>
+    </header>
+    <h1>Obtížnost</h1>
+    <div class="buttons">
+      <button class="big-btn diff-easy" data-difficulty="easy" type="button">Easy</button>
+      <button class="big-btn diff-medium" data-difficulty="medium" type="button">Medium</button>
+      <button class="big-btn diff-hard" data-difficulty="hard" type="button">Hard</button>
+    </div>
+  </div>
+
+  <!-- Výběr módu pro hru s kamarádem -->
+  <div id="pvp-mode-screen" class="screen hidden">
+    <header>
+      <button id="pvp-mode-back-btn" class="link-btn" type="button">← Zpět</button>
+      <span>Hra s kamarádem</span>
+    </header>
+    <h1>Mód</h1>
+    <div class="buttons">
+      <button class="big-btn primary" data-pvp-mode="classic" type="button">Klasické 3×3</button>
+      <button class="big-btn" data-pvp-mode="open" type="button">Velká plocha (5 v řadě)</button>
+    </div>
+  </div>
+
+  <!-- Čekání na kamaráda -->
+  <div id="pvp-waiting-screen" class="screen hidden">
+    <header>
+      <button id="pvp-waiting-cancel-btn" class="link-btn" type="button">← Zrušit</button>
+      <span>Čeká se na kamaráda…</span>
+    </header>
+    <div class="card">
+      <p class="muted">Pošli kamarádovi tento odkaz. Jakmile se přihlásí, hra začne automaticky.</p>
+      <input type="text" id="pvp-invite-url" readonly>
+      <button id="pvp-copy-btn" class="big-btn primary" type="button">Zkopírovat odkaz</button>
+      <p id="pvp-copy-feedback" class="feedback dark"></p>
+    </div>
+  </div>
+
+  <!-- Herní obrazovka -->
+  <div id="game-screen" class="screen hidden">
+    <header>
+      <button id="back-btn" class="link-btn" type="button">← Zpět</button>
+      <span id="game-status">Tvůj tah</span>
+    </header>
+    <div id="board-wrapper">
+      <div id="board" aria-label="Herní pole"></div>
+    </div>
+    <div id="game-over" class="hidden">
+      <p id="game-over-text"></p>
+      <button id="play-again-btn" class="big-btn primary" type="button">Hrát znovu</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
