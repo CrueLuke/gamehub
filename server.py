@@ -13,7 +13,17 @@ from flask import Flask, jsonify, request, send_from_directory, session
 from flask_socketio import SocketIO, emit, join_room
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'users.db')
+DATABASE_URL = os.environ.get('DATABASE_URL')
+USE_POSTGRES = bool(DATABASE_URL)
+
+# Postgres (na produkci) vs SQLite (lokálně, fallback)
+if USE_POSTGRES:
+    import psycopg2
+    import psycopg2.extras
+    _INTEGRITY_ERROR = psycopg2.IntegrityError
+else:
+    DB_PATH = os.path.join(BASE_DIR, 'users.db')
+    _INTEGRITY_ERROR = sqlite3.IntegrityError
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
@@ -28,15 +38,34 @@ STAT_COLS = ('ai_wins', 'ai_losses', 'ai_draws', 'pvp_wins', 'pvp_losses', 'pvp_
 
 # === Databáze ===
 
-def db():
+def _connect():
+    if USE_POSTGRES:
+        return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+def db_run(sql, params=(), *, commit=False, fetchone=False, fetchall=False):
+    """One-shot dotaz. Otevře spojení, provede, uzavře. Vrátí row(s) podle parametru."""
+    if USE_POSTGRES:
+        sql = sql.replace('?', '%s')   # SQLite styl ? → Postgres styl %s
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        if commit:
+            conn.commit()
+        if fetchone:
+            return cursor.fetchone()
+        if fetchall:
+            return cursor.fetchall()
+    finally:
+        conn.close()
+
+
 def init_db():
-    conn = db()
-    conn.execute('''
+    db_run('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
             password_hash TEXT NOT NULL,
@@ -47,9 +76,7 @@ def init_db():
             pvp_losses INTEGER DEFAULT 0,
             pvp_draws INTEGER DEFAULT 0
         )
-    ''')
-    conn.commit()
-    conn.close()
+    ''', commit=True)
 
 
 def hash_password(pw: str) -> str:
@@ -61,19 +88,14 @@ def stats_from_row(row) -> dict:
 
 
 def fetch_user(username: str):
-    conn = db()
-    row = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-    conn.close()
-    return row
+    return db_run('SELECT * FROM users WHERE username = ?', (username,), fetchone=True)
 
 
 def increment_stat(username: str, column: str) -> dict:
     assert column in STAT_COLS  # zabraň SQL injection přes column name
-    conn = db()
-    conn.execute(f'UPDATE users SET {column} = {column} + 1 WHERE username = ?', (username,))
-    conn.commit()
-    row = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-    conn.close()
+    db_run(f'UPDATE users SET {column} = {column} + 1 WHERE username = ?',
+           (username,), commit=True)
+    row = fetch_user(username)
     return stats_from_row(row)
 
 
@@ -93,16 +115,12 @@ def api_register():
         return jsonify({'error': 'Vyplň jméno i heslo.'}), 400
     if len(username) > 32:
         return jsonify({'error': 'Jméno je moc dlouhé (max 32 znaků).'}), 400
-    conn = db()
     try:
-        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                     (username, hash_password(password)))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
+        db_run('INSERT INTO users (username, password_hash) VALUES (?, ?)',
+               (username, hash_password(password)), commit=True)
+    except _INTEGRITY_ERROR:
         return jsonify({'error': 'Uživatel už existuje.'}), 409
-    row = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-    conn.close()
+    row = fetch_user(username)
     session['username'] = username
     return jsonify({'username': username, 'stats': stats_from_row(row)})
 
