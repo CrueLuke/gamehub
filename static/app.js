@@ -53,6 +53,7 @@ function showMenu() {
   if (!currentUser) { show('auth-screen'); return; }
   document.getElementById('welcome-name').textContent = currentUser.username;
   renderStats();
+  document.getElementById('pvp-scores').classList.add('hidden');
   show('menu-screen');
 }
 
@@ -136,14 +137,19 @@ function connectSocket() {
 
   socket.on('opponent_left', () => {
     if (gameKind !== 'pvp') return;
-    if (pvpRoom && pvpRoom.status === 'over') return;
     gameOver = true;
     statusEl.textContent = '';
-    if (pvpRoom) renderBoardPvp(pvpRoom, null);
+    if (pvpRoom) {
+      const line = pvpRoom.status === 'over' ? pvpRoom.winning_line : null;
+      renderBoardPvp(pvpRoom, line);
+    }
     gameOverText.textContent = '😶 Soupeř opustil hru.';
     gameOverEl.classList.remove('hidden');
     playAgainBtn.classList.remove('hidden');
     playAgainBtn.textContent = 'Zpět do menu';
+    playAgainBtn.disabled = false;
+    document.getElementById('rematch-hint').classList.add('hidden');
+    pvpRoom = null; // místnost už není
   });
 }
 
@@ -280,10 +286,12 @@ document.getElementById('back-btn').addEventListener('click', () => {
 playAgainBtn.addEventListener('click', () => {
   if (gameKind === 'ai') {
     startAiGame(currentModeName);
-  } else {
-    if (socket) socket.emit('leave_room');
-    pvpRoom = null;
+  } else if (!pvpRoom) {
+    // Soupeř odešel — místnost je zrušená, jen zpět do menu
     showMenu();
+  } else {
+    // PvP: požádat o rematch (server čeká, až obě strany kliknou)
+    socket.emit('rematch');
   }
 });
 
@@ -297,6 +305,9 @@ function startAiGame(modeName) {
   gameOverEl.classList.add('hidden');
   playAgainBtn.classList.remove('hidden');
   playAgainBtn.textContent = 'Hrát znovu';
+  playAgainBtn.disabled = false;
+  document.getElementById('rematch-hint').classList.add('hidden');
+  document.getElementById('pvp-scores').classList.add('hidden');
   statusEl.textContent = `Tvůj tah (X) — ${mode.label} · ${difficultyLabel(currentDifficulty)}`;
   applyBoardStyle(modeName, mode.size);
   renderBoardAi();
@@ -537,6 +548,7 @@ function enterPvpGame(state) {
   mode = { size: state.size, winLen: state.win_len, label: MODES[state.mode].label };
 
   applyBoardStyle(state.mode, state.size);
+  updatePvpScores(state);
 
   gameOver = state.status !== 'playing';
   renderBoardPvp(state, state.status === 'over' ? state.winning_line : null);
@@ -548,6 +560,32 @@ function enterPvpGame(state) {
     updatePvpStatus(state);
   }
   show('game-screen');
+}
+
+function updatePvpScores(state) {
+  const scoresEl = document.getElementById('pvp-scores');
+  if (!state || !state.scores || !currentUser) {
+    scoresEl.classList.add('hidden');
+    return;
+  }
+  const me = currentUser.username;
+  const opponent = state.players.find(p => p !== me);
+  const leftEl  = document.getElementById('pvp-score-left');
+  const rightEl = document.getElementById('pvp-score-right');
+
+  leftEl.querySelector('.pvp-score-name').textContent = me;
+  leftEl.querySelector('.pvp-score-num').textContent  = state.scores[me] ?? 0;
+  leftEl.querySelector('.pvp-score-symbol').textContent = state.symbols?.[me] ? `(${state.symbols[me]})` : '';
+
+  if (opponent) {
+    rightEl.querySelector('.pvp-score-name').textContent = opponent;
+    rightEl.querySelector('.pvp-score-num').textContent  = state.scores[opponent] ?? 0;
+    rightEl.querySelector('.pvp-score-symbol').textContent = state.symbols?.[opponent] ? `(${state.symbols[opponent]})` : '';
+    rightEl.classList.remove('hidden');
+  } else {
+    rightEl.classList.add('hidden');
+  }
+  scoresEl.classList.remove('hidden');
 }
 
 function updatePvpStatus(state) {
@@ -587,6 +625,7 @@ function renderBoardPvp(state, winningLine) {
 
 function showPvpGameOver(state) {
   const me = currentUser.username;
+  const opponent = state.players.find(p => p !== me) || '?';
   let msg;
   if (state.winner === 'draw') msg = '🤝 Remíza.';
   else if (state.winner === me) msg = '🎉 Vyhrál jsi!';
@@ -595,7 +634,27 @@ function showPvpGameOver(state) {
   statusEl.textContent = '';
   gameOverEl.classList.remove('hidden');
   playAgainBtn.classList.remove('hidden');
-  playAgainBtn.textContent = 'Zpět do menu';
+
+  const wants = state.wants_rematch || [];
+  const iWantRematch = wants.includes(me);
+  const opponentWantsRematch = wants.includes(opponent);
+
+  if (iWantRematch) {
+    playAgainBtn.textContent = 'Čeká se na soupeře…';
+    playAgainBtn.disabled = true;
+  } else {
+    playAgainBtn.textContent = 'Hrát další hru';
+    playAgainBtn.disabled = false;
+  }
+
+  const hint = document.getElementById('rematch-hint');
+  if (opponentWantsRematch && !iWantRematch) {
+    hint.textContent = '👋 Soupeř chce další hru!';
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+
   refreshStats();
 }
 

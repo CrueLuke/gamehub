@@ -111,6 +111,20 @@
     </div>
   </div>
 
+  <!-- Postranní skóre v PvP módu (jen pro širší obrazovky) -->
+  <div id="pvp-scores" class="hidden" aria-hidden="true">
+    <div id="pvp-score-left" class="pvp-score">
+      <div class="pvp-score-name"></div>
+      <div class="pvp-score-num">0</div>
+      <div class="pvp-score-symbol"></div>
+    </div>
+    <div id="pvp-score-right" class="pvp-score">
+      <div class="pvp-score-name"></div>
+      <div class="pvp-score-num">0</div>
+      <div class="pvp-score-symbol"></div>
+    </div>
+  </div>
+
   <!-- Herní obrazovka -->
   <div id="game-screen" class="screen hidden">
     <header>
@@ -123,6 +137,7 @@
     <div id="game-over" class="hidden">
       <p id="game-over-text"></p>
       <button id="play-again-btn" class="big-btn primary" type="button">Hrát znovu</button>
+      <p id="rematch-hint" class="hidden"></p>
     </div>
   </div>
 

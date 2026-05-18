@@ -223,6 +223,9 @@ def room_state(room):
         'status': room['status'],
         'winner': room['winner'],
         'winning_line': room['winning_line'],
+        'scores': room.get('scores', {}),
+        'wants_rematch': list(room.get('wants_rematch', set())),
+        'games_played': room.get('games_played', 0),
     }
 
 
@@ -245,6 +248,9 @@ def on_create_room(data):
         'win_len': cfg['win_len'],
         'players': [username],
         'symbols': {username: 'X'},
+        'scores': {username: 0},
+        'games_played': 0,
+        'wants_rematch': set(),
         'board': [None] * (cfg['size'] * cfg['size']),
         'turn': 0,
         'status': 'waiting',
@@ -278,6 +284,7 @@ def on_join_room(data):
         return
     room['players'].append(username)
     room['symbols'][username] = 'O'
+    room['scores'][username] = 0
     room['status'] = 'playing'
     socketio.emit('room_state', room_state(room), to=room_id)
 
@@ -314,6 +321,7 @@ def on_make_move(data):
         room['status'] = 'over'
         room['winner'] = username
         room['winning_line'] = line
+        room['scores'][username] = room['scores'].get(username, 0) + 1
         # zaznamenat statistiky obou hráčů
         opponent = next(p for p in room['players'] if p != username)
         increment_stat(username, 'pvp_wins')
@@ -325,6 +333,37 @@ def on_make_move(data):
             increment_stat(p, 'pvp_draws')
     else:
         room['turn'] = 1 - room['turn']
+
+    socketio.emit('room_state', room_state(room), to=room_id)
+
+
+@socketio.on('rematch')
+def on_rematch(data=None):
+    username = session.get('username')
+    if not username:
+        return
+    room_id = SID_TO_ROOM.get(request.sid)
+    room = ROOMS.get(room_id) if room_id else None
+    if not room or room['status'] != 'over' or username not in room['players']:
+        return
+
+    room['wants_rematch'].add(username)
+
+    if len(room['wants_rematch']) >= 2:
+        # Oba chtějí — spustit novou hru, prohodit symboly (střídání toho, kdo začíná)
+        room['games_played'] += 1
+        room['board'] = [None] * (room['size'] * room['size'])
+        room['status'] = 'playing'
+        room['winner'] = None
+        room['winning_line'] = None
+        room['wants_rematch'] = set()
+        player_a, player_b = room['players']
+        if room['games_played'] % 2 == 1:
+            room['symbols'] = {player_a: 'O', player_b: 'X'}
+            room['turn'] = 1  # player_b má X, začíná
+        else:
+            room['symbols'] = {player_a: 'X', player_b: 'O'}
+            room['turn'] = 0
 
     socketio.emit('room_state', room_state(room), to=room_id)
 
@@ -346,13 +385,11 @@ def handle_disconnect(sid):
     room = ROOMS.get(room_id)
     if not room:
         return
-    # Když ještě hra běžela a někdo odešel, oznam to druhému a zruš místnost
+    # Vždy oznámit soupeři odchod (i po hře — soupeř mohl čekat na rematch)
+    socketio.emit('opponent_left', {'room_id': room_id}, to=room_id)
     if room['status'] in ('waiting', 'playing'):
         room['status'] = 'abandoned'
-        socketio.emit('opponent_left', {'room_id': room_id}, to=room_id)
-    # Vyčistíme dokončené/opuštěné místnosti
-    if room['status'] in ('over', 'abandoned'):
-        ROOMS.pop(room_id, None)
+    ROOMS.pop(room_id, None)
 
 
 # === Run ===

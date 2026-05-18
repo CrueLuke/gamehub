@@ -323,3 +323,69 @@ header {
   font-weight: 600;
   margin-bottom: 16px;
 }
+
+#rematch-hint {
+  margin-top: 10px;
+  color: #f59e0b;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+/* Postranní skóre v PvP — fixed, na bocích, mimo flow */
+#pvp-scores {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pvp-score {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  color: white;
+}
+
+#pvp-score-left  { left: max(2%, calc(50% - 380px)); }
+#pvp-score-right { right: max(2%, calc(50% - 380px)); }
+
+.pvp-score-name {
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pvp-score-num {
+  width: 90px;
+  height: 90px;
+  background: white;
+  color: #1f2937;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  font-weight: bold;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  margin: 0 auto;
+  line-height: 1;
+}
+
+.pvp-score-symbol {
+  margin-top: 8px;
+  font-size: 1.4rem;
+  font-weight: bold;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  opacity: 0.85;
+}
+
+/* Skryj postranní skóre na úzkých obrazovkách — netřeba, prostor není */
+@media (max-width: 900px) {
+  #pvp-scores { display: none; }
+}
