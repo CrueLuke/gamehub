@@ -54,6 +54,7 @@ function showMenu() {
   document.getElementById('welcome-name').textContent = currentUser.username;
   renderStats();
   document.getElementById('pvp-scores').classList.add('hidden');
+  cancelTurnTimer();
   show('menu-screen');
 }
 
@@ -98,6 +99,7 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
   try { await api('/api/logout', 'POST'); } catch (_) {}
   currentUser = null;
   if (socket) { socket.disconnect(); socket = null; }
+  cancelTurnTimer();
   setAuthMode('login');
   show('auth-screen');
 });
@@ -138,6 +140,7 @@ function connectSocket() {
   socket.on('opponent_left', () => {
     if (gameKind !== 'pvp') return;
     gameOver = true;
+    cancelTurnTimer();
     statusEl.textContent = '';
     if (pvpRoom) {
       const line = pvpRoom.status === 'over' ? pvpRoom.winning_line : null;
@@ -206,6 +209,42 @@ let mode = MODES.classic;
 let board = [];
 let gameOver = false;
 let humanTurn = true;
+let lastMoveIndex = null;     // poslední tah v AI módu (pro animaci)
+let turnReminderTimer = null; // 20s timer připomínky
+
+// === Připomínka „jsi na tahu" ===
+
+function startTurnTimer() {
+  cancelTurnTimer();
+  turnReminderTimer = setTimeout(() => {
+    document.getElementById('turn-reminder').classList.remove('hidden');
+  }, 20000);
+}
+
+function cancelTurnTimer() {
+  if (turnReminderTimer) {
+    clearTimeout(turnReminderTimer);
+    turnReminderTimer = null;
+  }
+  document.getElementById('turn-reminder').classList.add('hidden');
+}
+
+// === Konfety při výhře (jen v PvP) ===
+
+function celebrateWin(winnerSymbol) {
+  if (typeof confetti !== 'function') return;
+  // X vítězí → konfety zprava, O → zleva
+  const fromRight = winnerSymbol === 'X';
+  const origin = fromRight ? { x: 1, y: 0.55 } : { x: 0, y: 0.55 };
+  const angle  = fromRight ? 135 : 45;
+  const colors = ['#667eea', '#764ba2', '#10b981', '#f59e0b', '#ef4444', '#ffffff'];
+  const burst = (delay, count, spread) => setTimeout(() => {
+    confetti({ particleCount: count, spread, angle, origin, colors, startVelocity: 55, scalar: 1.05 });
+  }, delay);
+  burst(0,   90,  75);
+  burst(180, 70,  100);
+  burst(360, 60,  110);
+}
 
 const boardEl = document.getElementById('board');
 const statusEl = document.getElementById('game-status');
@@ -216,13 +255,15 @@ const playAgainBtn = document.getElementById('play-again-btn');
 function applyBoardStyle(modeName, size) {
   boardEl.className = modeName === 'classic' ? 'board-classic' : 'board-open';
   boardEl.style.setProperty('--size', size);
+  // V open módu rozšířit herní obrazovku, aby byly kameny větší
+  document.getElementById('game-screen').classList.toggle('wide', modeName === 'open');
   if (modeName === 'classic') {
     boardEl.style.setProperty('--cell-font', '3.5rem');
     boardEl.style.setProperty('--cell-radius', '8px');
     boardEl.style.setProperty('--gap', '8px');
   } else {
-    boardEl.style.setProperty('--cell-font', '1.1rem');
-    boardEl.style.setProperty('--cell-radius', '3px');
+    boardEl.style.setProperty('--cell-font', '1.6rem');
+    boardEl.style.setProperty('--cell-radius', '4px');
     boardEl.style.setProperty('--gap', '2px');
   }
 }
@@ -302,6 +343,7 @@ function startAiGame(modeName) {
   board = Array(mode.size * mode.size).fill(null);
   gameOver = false;
   humanTurn = true;
+  lastMoveIndex = null;
   gameOverEl.classList.add('hidden');
   playAgainBtn.classList.remove('hidden');
   playAgainBtn.textContent = 'Hrát znovu';
@@ -311,6 +353,7 @@ function startAiGame(modeName) {
   statusEl.textContent = `Tvůj tah (X) — ${mode.label} · ${difficultyLabel(currentDifficulty)}`;
   applyBoardStyle(modeName, mode.size);
   renderBoardAi();
+  startTurnTimer();  // hráč je na tahu, spustit timer
   show('game-screen');
 }
 
@@ -324,6 +367,7 @@ function renderBoardAi(winningLine) {
       btn.textContent = board[i];
       btn.classList.add(board[i].toLowerCase());
       btn.disabled = true;
+      if (i === lastMoveIndex) btn.classList.add('cell-just-placed');
     } else if (gameOver || !humanTurn) {
       btn.disabled = true;
     } else {
@@ -348,11 +392,13 @@ function humanMove(i) {
   if (gameOver || board[i] || !humanTurn) return;
   board[i] = HUMAN;
   humanTurn = false;
+  lastMoveIndex = i;
+  cancelTurnTimer();  // tah proveden, zruš připomínku
   const info = aiMoveResult(i, HUMAN);
   if (info) { finishAiGame(info); return; }
   renderBoardAi();
   statusEl.textContent = 'Tah AI…';
-  setTimeout(aiMove, 200);
+  setTimeout(aiMove, 400);  // chvíli, aby byla vidět animace umístění
 }
 
 function aiMove() {
@@ -361,15 +407,18 @@ function aiMove() {
     ? pickAiClassic(currentDifficulty)
     : pickAiOpen(currentDifficulty);
   board[moveIdx] = AI;
+  lastMoveIndex = moveIdx;
   humanTurn = true;
   const info = aiMoveResult(moveIdx, AI);
   if (info) { finishAiGame(info); return; }
   renderBoardAi();
   statusEl.textContent = `Tvůj tah (X) — ${mode.label} · ${difficultyLabel(currentDifficulty)}`;
+  startTurnTimer();  // hráč je zase na tahu
 }
 
 async function finishAiGame(info) {
   gameOver = true;
+  cancelTurnTimer();
   let msg, result;
   if (info.winner === HUMAN) { msg = '🎉 Vyhrál jsi!'; result = 'win'; }
   else if (info.winner === AI) { msg = '😞 AI vyhrála.'; result = 'loss'; }
@@ -595,9 +644,13 @@ function updatePvpStatus(state) {
   if (state.status === 'playing') {
     if (state.turn === me) {
       statusEl.textContent = `Tvůj tah (${mySymbol}) — soupeř: ${opponent}`;
+      startTurnTimer();  // jsem na tahu, spustit připomínku
     } else {
       statusEl.textContent = `Tah soupeře (${opponent})…`;
+      cancelTurnTimer();
     }
+  } else {
+    cancelTurnTimer();
   }
 }
 
@@ -605,6 +658,7 @@ function renderBoardPvp(state, winningLine) {
   boardEl.innerHTML = '';
   const me = currentUser.username;
   const myTurn = state.status === 'playing' && state.turn === me;
+  const lastMove = state.last_move;
   for (let i = 0; i < state.board.length; i++) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -613,10 +667,14 @@ function renderBoardPvp(state, winningLine) {
       btn.textContent = state.board[i];
       btn.classList.add(state.board[i].toLowerCase());
       btn.disabled = true;
+      if (i === lastMove) btn.classList.add('cell-just-placed');
     } else if (!myTurn) {
       btn.disabled = true;
     } else {
-      btn.addEventListener('click', () => socket.emit('make_move', { index: i }));
+      btn.addEventListener('click', () => {
+        socket.emit('make_move', { index: i });
+        cancelTurnTimer();  // hned ruším, ať banner okamžitě zmizí
+      });
     }
     if (winningLine && winningLine.includes(i)) btn.classList.add('winning');
     boardEl.appendChild(btn);
@@ -626,10 +684,16 @@ function renderBoardPvp(state, winningLine) {
 function showPvpGameOver(state) {
   const me = currentUser.username;
   const opponent = state.players.find(p => p !== me) || '?';
+  cancelTurnTimer();
   let msg;
   if (state.winner === 'draw') msg = '🤝 Remíza.';
   else if (state.winner === me) msg = '🎉 Vyhrál jsi!';
   else msg = `😞 Vyhrál ${state.winner}.`;
+  // Konfety podle symbolu vítěze (X → zprava, O → zleva)
+  if (state.winner && state.winner !== 'draw') {
+    const winnerSymbol = state.symbols?.[state.winner];
+    if (winnerSymbol) celebrateWin(winnerSymbol);
+  }
   gameOverText.textContent = msg;
   statusEl.textContent = '';
   gameOverEl.classList.remove('hidden');

@@ -226,6 +226,7 @@ def room_state(room):
         'scores': room.get('scores', {}),
         'wants_rematch': list(room.get('wants_rematch', set())),
         'games_played': room.get('games_played', 0),
+        'last_move': room.get('last_move'),
     }
 
 
@@ -256,6 +257,7 @@ def on_create_room(data):
         'status': 'waiting',
         'winner': None,
         'winning_line': None,
+        'last_move': None,
     }
     join_room(room_id)
     SID_TO_ROOM[request.sid] = room_id
@@ -316,6 +318,7 @@ def on_make_move(data):
 
     symbol = room['symbols'][username]
     room['board'][idx] = symbol
+    room['last_move'] = idx
     line = find_winning_line(room['board'], idx, symbol, room['size'], room['win_len'])
     if line:
         room['status'] = 'over'
@@ -356,6 +359,7 @@ def on_rematch(data=None):
         room['status'] = 'playing'
         room['winner'] = None
         room['winning_line'] = None
+        room['last_move'] = None
         room['wants_rematch'] = set()
         player_a, player_b = room['players']
         if room['games_played'] % 2 == 1:

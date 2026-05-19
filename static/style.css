@@ -59,6 +59,11 @@ body {
   max-width: 480px;
 }
 
+/* V herní obrazovce s otevřenou plochou (15×15) povolit širší layout, ať jsou kameny větší */
+#game-screen.wide {
+  max-width: 720px;
+}
+
 .hidden { display: none !important; }
 
 h1 {
@@ -305,6 +310,17 @@ header {
 .cell.o { color: #ef4444; }
 .cell.winning { background: #fef3c7; }
 
+/* Animace pro nově umístěný kámen — vyskočí s odrazem */
+@keyframes cell-place {
+  0%   { transform: scale(0)    rotate(-30deg); opacity: 0; }
+  60%  { transform: scale(1.25) rotate(8deg);   opacity: 1; }
+  80%  { transform: scale(0.95) rotate(-3deg);  opacity: 1; }
+  100% { transform: scale(1)    rotate(0);      opacity: 1; }
+}
+.cell.cell-just-placed {
+  animation: cell-place 0.45s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
 #game-status {
   font-weight: 600;
   font-size: 1.05rem;
@@ -388,4 +404,27 @@ header {
 /* Skryj postranní skóre na úzkých obrazovkách — netřeba, prostor není */
 @media (max-width: 900px) {
   #pvp-scores { display: none; }
+}
+
+/* Připomínka „jsi na tahu" — toast nahoře */
+#turn-reminder {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 1rem;
+  z-index: 200;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+  animation: reminder-pulse 1.2s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes reminder-pulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50%      { transform: translateX(-50%) scale(1.08); }
 }
