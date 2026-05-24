@@ -741,6 +741,7 @@ let dcRoom = null;
 let pendingDcRoomId = null;
 let dcSubmitted = false;
 let dcTimerInterval = null;
+let dcCurrentTheme = null;   // hlídá, jestli přišel "nový" stav, nebo jen update v aktuálním kole
 
 const dcCanvas = document.getElementById('dc-canvas');
 const dcCtx = dcCanvas.getContext('2d');
@@ -887,20 +888,20 @@ document.getElementById('play-dc-btn').addEventListener('click', () => {
 
 document.getElementById('dc-waiting-cancel-btn').addEventListener('click', () => {
   if (socket) socket.emit('leave_room');
-  dcRoom = null; stopDcTimer();
+  dcRoom = null; dcCurrentTheme = null; stopDcTimer();
   showMenu();
 });
 
 document.getElementById('dc-back-btn').addEventListener('click', () => {
   if (!confirm('Opravdu opustit hru? Tvoje kresba se ztratí.')) return;
   if (socket) socket.emit('leave_room');
-  dcRoom = null; stopDcTimer();
+  dcRoom = null; dcCurrentTheme = null; stopDcTimer();
   showMenu();
 });
 
 document.getElementById('dc-result-back-btn').addEventListener('click', () => {
   if (socket) socket.emit('leave_room');
-  dcRoom = null; stopDcTimer();
+  dcRoom = null; dcCurrentTheme = null; stopDcTimer();
   showMenu();
 });
 
@@ -932,6 +933,7 @@ function showDcWaiting(state) {
 function enterDcGame(state) {
   dcRoom = state;
   dcSubmitted = false;
+  dcCurrentTheme = state.theme;
   dcClearCanvas();
   document.getElementById('dc-theme-text').textContent = state.theme || '…';
   const opponent = state.players.find(p => p !== currentUser.username) || 'soupeř';
@@ -941,6 +943,25 @@ function enterDcGame(state) {
   submitBtn.textContent = '✓ Odeslat';
   startDcTimer(90);
   show('dc-game-screen');
+}
+
+function updateDcGameStatus(state) {
+  // Update status řádku v rámci stejného kola (NEdotýkat se canvasu ani timeru)
+  const me = currentUser.username;
+  const opponent = state.players.find(p => p !== me) || 'soupeř';
+  const submitted = state.submitted || [];
+  const iSubmitted = submitted.includes(me);
+  const opponentSubmitted = submitted.includes(opponent);
+  const statusEl = document.getElementById('dc-status');
+  if (iSubmitted && opponentSubmitted) {
+    statusEl.textContent = '🤖 AI hodnotí kresby…';
+  } else if (iSubmitted) {
+    statusEl.textContent = `Odesláno ✓ — čeká se na ${opponent}…`;
+  } else if (opponentSubmitted) {
+    statusEl.textContent = `⚡ ${opponent} už odeslal — dokresli rychle!`;
+  } else {
+    statusEl.textContent = `Kresli! (soupeř: ${opponent})`;
+  }
 }
 
 function showDcJudging(state) {
@@ -1003,13 +1024,16 @@ function attachDcSocketListeners() {
     dcRoom = state;
     if (state.status === 'waiting') {
       showDcWaiting(state);
+      dcCurrentTheme = null;
     } else if (state.status === 'drawing') {
-      // Pokud už jsme v game screen, jen znova nastavit (nové kolo)
-      if (document.getElementById('dc-game-screen').classList.contains('hidden')) {
+      // Detekujeme nové kolo přes změnu tématu (NE přes status).
+      // Pokud je téma stejné jako naposled, jde jen o status update v rámci kola
+      // (např. soupeř odeslal) → NEresetovat canvas.
+      const isNewRound = state.theme !== dcCurrentTheme;
+      if (isNewRound) {
         enterDcGame(state);
       } else {
-        // Re-init pro další kolo
-        enterDcGame(state);
+        updateDcGameStatus(state);
       }
     } else if (state.status === 'judging') {
       showDcJudging(state);
