@@ -46,7 +46,10 @@ async function refreshStats() {
 
 function show(screenId) {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-  document.getElementById(screenId).classList.remove('hidden');
+  const target = document.getElementById(screenId);
+  target.classList.remove('hidden');
+  // Drawing Competition obrazovky mají červené pozadí celé stránky
+  document.body.classList.toggle('dc-active', target.classList.contains('dc-theme'));
 }
 
 function showMenu() {
@@ -112,6 +115,14 @@ function onLoginSuccess() {
     history.replaceState({}, '', location.pathname);
     if (socket.connected) socket.emit('join_room', { room_id: rid });
     else socket.once('connect', () => socket.emit('join_room', { room_id: rid }));
+    return;
+  }
+  if (pendingDcRoomId) {
+    const rid = pendingDcRoomId;
+    pendingDcRoomId = null;
+    history.replaceState({}, '', location.pathname);
+    if (socket.connected) socket.emit('dc_join_room', { room_id: rid });
+    else socket.once('connect', () => socket.emit('dc_join_room', { room_id: rid }));
     return;
   }
   showMenu();
@@ -722,12 +733,317 @@ function showPvpGameOver(state) {
   refreshStats();
 }
 
+// =====================================================
+// Drawing Competition (DC) — multiplayer s AI hodnocením
+// =====================================================
+
+let dcRoom = null;
+let pendingDcRoomId = null;
+let dcSubmitted = false;
+let dcTimerInterval = null;
+
+const dcCanvas = document.getElementById('dc-canvas');
+const dcCtx = dcCanvas.getContext('2d');
+let dcDrawing = false;
+let dcLastX = 0, dcLastY = 0;
+let dcColor = '#000000';
+let dcBrushSize = 3;
+
+function dcClearCanvas() {
+  dcCtx.fillStyle = 'white';
+  dcCtx.fillRect(0, 0, dcCanvas.width, dcCanvas.height);
+}
+
+function dcGetPos(e) {
+  const rect = dcCanvas.getBoundingClientRect();
+  const scaleX = dcCanvas.width / rect.width;
+  const scaleY = dcCanvas.height / rect.height;
+  let clientX, clientY;
+  if (e.touches && e.touches.length > 0) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+}
+
+function dcStartDraw(e) {
+  if (dcSubmitted) return;
+  e.preventDefault();
+  dcDrawing = true;
+  const p = dcGetPos(e);
+  dcLastX = p.x; dcLastY = p.y;
+  // Tečka při krátkém kliknutí
+  dcCtx.beginPath();
+  dcCtx.arc(p.x, p.y, dcBrushSize / 2, 0, Math.PI * 2);
+  dcCtx.fillStyle = dcColor;
+  dcCtx.fill();
+}
+
+function dcMoveDraw(e) {
+  if (!dcDrawing) return;
+  e.preventDefault();
+  const p = dcGetPos(e);
+  dcCtx.beginPath();
+  dcCtx.moveTo(dcLastX, dcLastY);
+  dcCtx.lineTo(p.x, p.y);
+  dcCtx.strokeStyle = dcColor;
+  dcCtx.lineWidth = dcBrushSize;
+  dcCtx.lineCap = 'round';
+  dcCtx.lineJoin = 'round';
+  dcCtx.stroke();
+  dcLastX = p.x; dcLastY = p.y;
+}
+
+function dcEndDraw() { dcDrawing = false; }
+
+dcCanvas.addEventListener('mousedown', dcStartDraw);
+dcCanvas.addEventListener('mousemove', dcMoveDraw);
+dcCanvas.addEventListener('mouseup', dcEndDraw);
+dcCanvas.addEventListener('mouseleave', dcEndDraw);
+dcCanvas.addEventListener('touchstart', dcStartDraw, { passive: false });
+dcCanvas.addEventListener('touchmove', dcMoveDraw, { passive: false });
+dcCanvas.addEventListener('touchend', dcEndDraw);
+dcCanvas.addEventListener('touchcancel', dcEndDraw);
+
+dcClearCanvas();  // bílá výchozí plocha
+
+// Výběr barvy
+document.querySelectorAll('.dc-color').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dc-color').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    dcColor = btn.dataset.color;
+  });
+});
+
+// Výběr velikosti štětce
+document.querySelectorAll('.dc-size').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dc-size').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    dcBrushSize = parseInt(btn.dataset.size, 10);
+  });
+});
+
+// Smazat plochu
+document.getElementById('dc-clear-btn').addEventListener('click', () => {
+  if (dcSubmitted) return;
+  if (confirm('Opravdu smazat celou kresbu?')) dcClearCanvas();
+});
+
+// Odeslat kresbu
+document.getElementById('dc-submit-btn').addEventListener('click', dcSubmit);
+
+function dcSubmit() {
+  if (dcSubmitted) return;
+  if (!socket || !socket.connected) return;
+  const dataUrl = dcCanvas.toDataURL('image/png');
+  socket.emit('dc_submit_drawing', { image: dataUrl });
+  dcSubmitted = true;
+  const btn = document.getElementById('dc-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Odesláno ✓';
+  document.getElementById('dc-status').textContent = 'Čeká se na soupeře…';
+}
+
+// === DC timer ===
+
+function startDcTimer(seconds = 90) {
+  stopDcTimer();
+  let s = seconds;
+  const el = document.getElementById('dc-timer');
+  el.textContent = s;
+  el.classList.remove('urgent');
+  dcTimerInterval = setInterval(() => {
+    s--;
+    if (s < 0) {
+      stopDcTimer();
+      if (!dcSubmitted) dcSubmit();  // auto-submit při vypršení
+      return;
+    }
+    el.textContent = s;
+    if (s <= 10) el.classList.add('urgent');
+  }, 1000);
+}
+
+function stopDcTimer() {
+  if (dcTimerInterval) {
+    clearInterval(dcTimerInterval);
+    dcTimerInterval = null;
+  }
+}
+
+// === DC menu + obrazovky ===
+
+document.getElementById('play-dc-btn').addEventListener('click', () => {
+  if (!socket) connectSocket();
+  const sendCreate = () => socket.emit('dc_create_room');
+  if (socket.connected) sendCreate();
+  else socket.once('connect', sendCreate);
+});
+
+document.getElementById('dc-waiting-cancel-btn').addEventListener('click', () => {
+  if (socket) socket.emit('leave_room');
+  dcRoom = null; stopDcTimer();
+  showMenu();
+});
+
+document.getElementById('dc-back-btn').addEventListener('click', () => {
+  if (!confirm('Opravdu opustit hru? Tvoje kresba se ztratí.')) return;
+  if (socket) socket.emit('leave_room');
+  dcRoom = null; stopDcTimer();
+  showMenu();
+});
+
+document.getElementById('dc-result-back-btn').addEventListener('click', () => {
+  if (socket) socket.emit('leave_room');
+  dcRoom = null; stopDcTimer();
+  showMenu();
+});
+
+document.getElementById('dc-next-btn').addEventListener('click', () => {
+  if (socket) socket.emit('dc_next_round');
+});
+
+document.getElementById('dc-copy-btn').addEventListener('click', async () => {
+  const input = document.getElementById('dc-invite-url');
+  const url = input.value;
+  const fb = document.getElementById('dc-copy-feedback');
+  try {
+    await navigator.clipboard.writeText(url);
+    fb.textContent = '✓ Zkopírováno!';
+  } catch {
+    input.select();
+    try { document.execCommand('copy'); fb.textContent = '✓ Zkopírováno!'; }
+    catch { fb.textContent = 'Zkopíruj ručně: ' + url; }
+  }
+});
+
+function showDcWaiting(state) {
+  const url = `${location.origin}${location.pathname}?dcroom=${state.room_id}`;
+  document.getElementById('dc-invite-url').value = url;
+  document.getElementById('dc-copy-feedback').textContent = '';
+  show('dc-waiting-screen');
+}
+
+function enterDcGame(state) {
+  dcRoom = state;
+  dcSubmitted = false;
+  dcClearCanvas();
+  document.getElementById('dc-theme-text').textContent = state.theme || '…';
+  const opponent = state.players.find(p => p !== currentUser.username) || 'soupeř';
+  document.getElementById('dc-status').textContent = `Kresli! (soupeř: ${opponent})`;
+  const submitBtn = document.getElementById('dc-submit-btn');
+  submitBtn.disabled = false;
+  submitBtn.textContent = '✓ Odeslat';
+  startDcTimer(90);
+  show('dc-game-screen');
+}
+
+function showDcJudging(state) {
+  document.getElementById('dc-status').textContent = '🤖 AI hodnotí kresby…';
+  stopDcTimer();
+}
+
+function showDcResult(state) {
+  stopDcTimer();
+  const me = currentUser.username;
+  const [pa, pb] = state.players;
+  const r = state.result || {};
+
+  document.getElementById('dc-result-theme').textContent = r.theme || state.theme || '…';
+  document.getElementById('dc-img-a-label').textContent = `${pa} (A)`;
+  document.getElementById('dc-img-b-label').textContent = `${pb} (B)`;
+  document.getElementById('dc-img-a').src = (state.submissions && state.submissions[pa]) || '';
+  document.getElementById('dc-img-b').src = (state.submissions && state.submissions[pb]) || '';
+
+  let verdict;
+  if (!r.winner) verdict = '🤝 Remíza!';
+  else if (r.winner === me) verdict = '🎉 Vyhrál jsi!';
+  else verdict = `😞 Vyhrál ${r.winner}.`;
+  document.getElementById('dc-result-verdict').textContent = verdict;
+  document.getElementById('dc-result-reason').textContent = r.duvod ? `„${r.duvod}"` : '';
+
+  document.getElementById('dc-score-a-name').textContent = pa;
+  document.getElementById('dc-score-b-name').textContent = pb;
+  document.getElementById('dc-score-a-num').textContent = (state.scores || {})[pa] ?? 0;
+  document.getElementById('dc-score-b-num').textContent = (state.scores || {})[pb] ?? 0;
+
+  document.querySelectorAll('.dc-image-block').forEach(b => b.classList.remove('winner'));
+  if (r.winner === pa) document.getElementById('dc-img-a').parentElement.classList.add('winner');
+  if (r.winner === pb) document.getElementById('dc-img-b').parentElement.classList.add('winner');
+
+  const wants = state.wants_next || [];
+  const opponent = state.players.find(p => p !== me);
+  const iWant = wants.includes(me);
+  const opponentWants = opponent && wants.includes(opponent);
+  const nextBtn = document.getElementById('dc-next-btn');
+  const hint = document.getElementById('dc-next-hint');
+  if (iWant) {
+    nextBtn.disabled = true;
+    nextBtn.textContent = 'Čeká se na soupeře…';
+  } else {
+    nextBtn.disabled = false;
+    nextBtn.textContent = 'Hrát další kolo';
+  }
+  hint.textContent = (opponentWants && !iWant) ? '👋 Soupeř chce další kolo!' : '';
+
+  show('dc-result-screen');
+}
+
+// Drawing Competition socket listeners — registrují se po prvním connectu
+function attachDcSocketListeners() {
+  if (!socket || socket._dcListenersAttached) return;
+  socket._dcListenersAttached = true;
+
+  socket.on('dc_room_state', state => {
+    dcRoom = state;
+    if (state.status === 'waiting') {
+      showDcWaiting(state);
+    } else if (state.status === 'drawing') {
+      // Pokud už jsme v game screen, jen znova nastavit (nové kolo)
+      if (document.getElementById('dc-game-screen').classList.contains('hidden')) {
+        enterDcGame(state);
+      } else {
+        // Re-init pro další kolo
+        enterDcGame(state);
+      }
+    } else if (state.status === 'judging') {
+      showDcJudging(state);
+    } else if (state.status === 'over') {
+      showDcResult(state);
+    }
+  });
+
+  socket.on('dc_opponent_left', () => {
+    const isDcScreen = !document.getElementById('dc-game-screen').classList.contains('hidden')
+                    || !document.getElementById('dc-waiting-screen').classList.contains('hidden')
+                    || !document.getElementById('dc-result-screen').classList.contains('hidden');
+    if (!isDcScreen) return;
+    alert('😶 Soupeř opustil hru.');
+    dcRoom = null; stopDcTimer();
+    showMenu();
+  });
+}
+
+// Připojit DC listenery vždy, když se vytvoří socket
+const _origConnectSocket = connectSocket;
+connectSocket = function() {
+  _origConnectSocket.apply(this, arguments);
+  attachDcSocketListeners();
+};
+
 // === Inicializace ===
 
 (function init() {
   const params = new URLSearchParams(location.search);
   const roomParam = params.get('room');
   if (roomParam) pendingRoomId = roomParam.toUpperCase();
+  const dcroomParam = params.get('dcroom');
+  if (dcroomParam) pendingDcRoomId = dcroomParam.toUpperCase();
 
   playAgainBtn.textContent = 'Hrát znovu';
 

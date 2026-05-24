@@ -67,6 +67,7 @@
       <button id="play-classic-btn" class="big-btn primary" type="button">Hrát 3×3 (vs AI)</button>
       <button id="play-open-btn" class="big-btn" type="button">Hrát velkou plochu — 5 v řadě (vs AI)</button>
       <button id="play-pvp-btn" class="big-btn pvp" type="button">Hrát s kamarádem</button>
+      <button id="play-dc-btn" class="big-btn dc" type="button">🎨 Drawing Competition</button>
     </div>
   </div>
 
@@ -141,6 +142,88 @@
       <p id="game-over-text"></p>
       <button id="play-again-btn" class="big-btn primary" type="button">Hrát znovu</button>
       <p id="rematch-hint" class="hidden"></p>
+    </div>
+  </div>
+
+  <!-- Drawing Competition — čekárna -->
+  <div id="dc-waiting-screen" class="screen hidden dc-theme">
+    <header>
+      <button id="dc-waiting-cancel-btn" class="link-btn" type="button">← Zrušit</button>
+      <span>Čeká se na kamaráda…</span>
+    </header>
+    <h1>🎨 Drawing Competition</h1>
+    <div class="card">
+      <p class="muted">Pošli kamarádovi tento odkaz. Až ho otevře a přihlásí se, hra začne.</p>
+      <input type="text" id="dc-invite-url" readonly>
+      <button id="dc-copy-btn" class="big-btn dc" type="button">Zkopírovat odkaz</button>
+      <p id="dc-copy-feedback" class="feedback dark"></p>
+    </div>
+  </div>
+
+  <!-- Drawing Competition — hrací plocha -->
+  <div id="dc-game-screen" class="screen hidden dc-theme">
+    <header>
+      <button id="dc-back-btn" class="link-btn" type="button">← Zpět</button>
+      <span id="dc-status">Téma…</span>
+    </header>
+
+    <div id="dc-theme-banner">
+      Téma: <strong id="dc-theme-text">…</strong>
+      <span id="dc-timer" class="dc-timer">90</span>
+    </div>
+
+    <div id="dc-canvas-wrapper">
+      <canvas id="dc-canvas" width="500" height="500" aria-label="Kreslicí plocha"></canvas>
+    </div>
+
+    <div id="dc-tools">
+      <div class="dc-tool-group" id="dc-colors">
+        <button class="dc-color active" data-color="#000000" style="background:#000000" type="button" aria-label="Černá"></button>
+        <button class="dc-color" data-color="#ef4444" style="background:#ef4444" type="button" aria-label="Červená"></button>
+        <button class="dc-color" data-color="#2563eb" style="background:#2563eb" type="button" aria-label="Modrá"></button>
+        <button class="dc-color" data-color="#10b981" style="background:#10b981" type="button" aria-label="Zelená"></button>
+        <button class="dc-color" data-color="#f59e0b" style="background:#f59e0b" type="button" aria-label="Žlutá"></button>
+        <button class="dc-color" data-color="#ffffff" style="background:#ffffff;border:1px solid #ccc" type="button" aria-label="Guma (bílá)"></button>
+      </div>
+      <div class="dc-tool-group" id="dc-sizes">
+        <button class="dc-size active" data-size="3" type="button" aria-label="Tenký">●</button>
+        <button class="dc-size" data-size="8" type="button" aria-label="Střední">●</button>
+        <button class="dc-size" data-size="16" type="button" aria-label="Tlustý">●</button>
+      </div>
+      <div class="dc-tool-group">
+        <button id="dc-clear-btn" class="dc-tool-btn" type="button">Smazat vše</button>
+        <button id="dc-submit-btn" class="dc-tool-btn dc-submit" type="button">✓ Odeslat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawing Competition — výsledek -->
+  <div id="dc-result-screen" class="screen hidden dc-theme">
+    <header>
+      <button id="dc-result-back-btn" class="link-btn" type="button">← Zpět do menu</button>
+      <span id="dc-result-status">Výsledek</span>
+    </header>
+
+    <div class="card">
+      <p class="muted">Téma bylo: <strong id="dc-result-theme">…</strong></p>
+      <div id="dc-result-images">
+        <div class="dc-image-block">
+          <div class="dc-image-label" id="dc-img-a-label">Hráč A</div>
+          <img id="dc-img-a" alt="Kresba A">
+        </div>
+        <div class="dc-image-block">
+          <div class="dc-image-label" id="dc-img-b-label">Hráč B</div>
+          <img id="dc-img-b" alt="Kresba B">
+        </div>
+      </div>
+      <p id="dc-result-verdict" class="dc-verdict"></p>
+      <p id="dc-result-reason" class="dc-reason"></p>
+      <div class="dc-result-scores">
+        <div><span id="dc-score-a-name"></span>: <strong id="dc-score-a-num">0</strong></div>
+        <div><span id="dc-score-b-name"></span>: <strong id="dc-score-b-num">0</strong></div>
+      </div>
+      <button id="dc-next-btn" class="big-btn dc" type="button">Hrát další kolo</button>
+      <p id="dc-next-hint" class="feedback dark"></p>
     </div>
   </div>
 

@@ -229,6 +229,212 @@ header {
 .big-btn.pvp { background: #8b5cf6; color: white; }
 .big-btn.pvp:hover { background: #7c3aed; }
 
+.big-btn.dc { background: #ef4444; color: white; }
+.big-btn.dc:hover { background: #dc2626; }
+
+/* ===== Drawing Competition — červená paleta ===== */
+.dc-theme {
+  --dc-accent: #ef4444;
+  --dc-accent-dark: #dc2626;
+}
+
+/* Při zobrazení DC obrazovky přepneme pozadí na červené přes body data atribut.
+   Toho dosáhneme přes JS — nastaví na body class dc-active. */
+body.dc-active {
+  background: linear-gradient(135deg, #f97316 0%, #b91c1c 100%);
+}
+
+body.dc-active .deco { opacity: 0.10; }
+
+/* Téma + časomíra */
+#dc-theme-banner {
+  background: white;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+
+#dc-theme-text {
+  color: var(--dc-accent-dark);
+  font-size: 1.3rem;
+}
+
+.dc-timer {
+  background: var(--dc-accent);
+  color: white;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  min-width: 56px;
+  text-align: center;
+}
+
+.dc-timer.urgent { background: #b91c1c; animation: dc-pulse 0.8s ease-in-out infinite; }
+
+@keyframes dc-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.1); }
+}
+
+/* Canvas */
+#dc-canvas-wrapper {
+  background: white;
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  margin-bottom: 12px;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+
+#dc-canvas {
+  background: white;
+  cursor: crosshair;
+  touch-action: none;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  display: block;
+}
+
+/* Nástroje */
+#dc-tools {
+  background: white;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+
+.dc-tool-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+}
+
+.dc-color {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+
+.dc-color:hover { transform: scale(1.1); }
+.dc-color.active { border-color: var(--dc-accent-dark); transform: scale(1.15); }
+
+.dc-size {
+  width: 44px;
+  height: 36px;
+  border-radius: 8px;
+  border: 2px solid #d1d5db;
+  background: white;
+  cursor: pointer;
+  font-size: 0.6rem;
+  color: #1f2937;
+}
+
+.dc-size[data-size="3"]  { font-size: 0.5rem; }
+.dc-size[data-size="8"]  { font-size: 1rem; }
+.dc-size[data-size="16"] { font-size: 1.5rem; }
+
+.dc-size.active { border-color: var(--dc-accent-dark); background: #fef2f2; }
+
+.dc-tool-btn {
+  padding: 10px 16px;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.dc-tool-btn:hover { background: #f3f4f6; }
+
+.dc-submit {
+  background: var(--dc-accent);
+  color: white;
+  border-color: var(--dc-accent);
+}
+.dc-submit:hover { background: var(--dc-accent-dark); }
+.dc-submit:disabled { background: #9ca3af; border-color: #9ca3af; cursor: not-allowed; }
+
+/* Výsledek */
+#dc-result-images {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.dc-image-block {
+  text-align: center;
+}
+
+.dc-image-block.winner {
+  background: #fef3c7;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.dc-image-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+#dc-result-images img {
+  width: 100%;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+}
+
+.dc-verdict {
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--dc-accent-dark);
+  margin: 16px 0 8px;
+}
+
+.dc-reason {
+  text-align: center;
+  font-style: italic;
+  color: #4b5563;
+  margin-bottom: 16px;
+}
+
+.dc-result-scores {
+  display: flex;
+  justify-content: space-around;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 1.05rem;
+}
+
+@media (max-width: 600px) {
+  #dc-canvas { max-width: 95vw; }
+}
+
 .big-btn.diff-easy   { background: #10b981; color: white; }
 .big-btn.diff-easy:hover   { background: #0ea674; }
 .big-btn.diff-medium { background: #f59e0b; color: white; }

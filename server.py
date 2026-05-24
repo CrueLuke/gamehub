@@ -3,8 +3,11 @@
 Spuštění:   python3 server.py
 Server pak poslouchá na http://localhost:5000
 """
+import base64
 import hashlib
+import json
 import os
+import random
 import secrets
 import sqlite3
 import string
@@ -15,6 +18,21 @@ from flask_socketio import SocketIO, emit, join_room
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_URL = os.environ.get('DATABASE_URL')
 USE_POSTGRES = bool(DATABASE_URL)
+
+# Gemini AI (pro Drawing Competition) — volitelné, pokud klíč není, hra padne na žert
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+gemini_client = None
+try:
+    if GEMINI_API_KEY:
+        from google import genai
+        from google.genai import types as genai_types
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        print('Gemini AI: ready ✓')
+    else:
+        print('Gemini AI: GEMINI_API_KEY není nastavený, Drawing Competition pojede offline.')
+except Exception as _e:
+    print(f'Gemini AI init selhal: {_e}')
+    gemini_client = None
 
 # Postgres (na produkci) vs SQLite (lokálně, fallback)
 if USE_POSTGRES:
@@ -383,17 +401,256 @@ def on_disconnect():
 
 
 def handle_disconnect(sid):
+    # Piškvorky cleanup
     room_id = SID_TO_ROOM.pop(sid, None)
-    if not room_id:
+    if room_id:
+        room = ROOMS.get(room_id)
+        if room:
+            socketio.emit('opponent_left', {'room_id': room_id}, to=room_id)
+            if room['status'] in ('waiting', 'playing'):
+                room['status'] = 'abandoned'
+            ROOMS.pop(room_id, None)
+    # Drawing Competition cleanup
+    dc_room_id = SID_TO_DC_ROOM.pop(sid, None)
+    if dc_room_id:
+        dc_room = DC_ROOMS.get(dc_room_id)
+        if dc_room:
+            socketio.emit('dc_opponent_left', {'room_id': dc_room_id}, to=dc_room_id)
+            DC_ROOMS.pop(dc_room_id, None)
+
+
+# === Drawing Competition (DC) ===
+
+THEMES = [
+    'auto', 'kočka', 'pes', 'dům', 'strom', 'banán', 'hrad', 'robot',
+    'sluníčko', 'srdíčko', 'ryba', 'květina', 'kniha', 'jablko',
+    'hodiny', 'mrkev', 'slon', 'žirafa', 'motýl', 'medvěd',
+    'pizza', 'míč', 'mrak', 'autobus', 'hruška', 'kuře', 'dort',
+    'dárek', 'klobouk', 'klíč', 'tužka', 'kytara', 'raketa',
+    'včela', 'tučňák', 'jahoda', 'koruna', 'meč', 'lampa',
+]
+
+DC_ROOMS = {}
+SID_TO_DC_ROOM = {}
+
+
+def dc_pick_theme():
+    return random.choice(THEMES)
+
+
+def dc_room_state(room):
+    """Stav DC místnosti, který se posílá klientům."""
+    state = {
+        'room_id': room['id'],
+        'players': room['players'],
+        'symbols': room.get('symbols', {}),
+        'status': room['status'],
+        'theme': room.get('theme'),
+        'scores': room.get('scores', {}),
+        'submitted': list(room.get('submissions', {}).keys()),
+        'rounds_played': room.get('rounds_played', 0),
+        'wants_next': list(room.get('wants_next', set())),
+    }
+    # Po dokončení kola pošli obrázky a verdikt (jinak nikoli, ať soupeř nevidí výkres dřív)
+    if room['status'] == 'over' and room.get('result'):
+        state['result'] = room['result']
+        state['submissions'] = room.get('submissions', {})
+    return state
+
+
+def judge_drawings(image_a_b64: str, image_b_b64: str, theme: str) -> dict:
+    """Pošle dvě kresby Gemini AI a vrátí verdikt.
+
+    Vrátí: {'winner': 'A'|'B'|'draw', 'duvod': str}
+    """
+    if not gemini_client:
+        return {
+            'winner': 'draw',
+            'duvod': 'AI hodnocení není dostupné (chybí GEMINI_API_KEY). Berte oba jako vítěze. 🎉',
+        }
+
+    # Odstraň "data:image/png;base64," prefix, pokud je tam
+    if ',' in image_a_b64:
+        image_a_b64 = image_a_b64.split(',', 1)[1]
+    if ',' in image_b_b64:
+        image_b_b64 = image_b_b64.split(',', 1)[1]
+
+    try:
+        image_a_bytes = base64.b64decode(image_a_b64)
+        image_b_bytes = base64.b64decode(image_b_b64)
+    except Exception as e:
+        return {'winner': 'draw', 'duvod': f'Chyba při dekódování obrázků: {e}'}
+
+    prompt = (
+        f'Jsi vtipný porotce amatérských kreseb. Hodnotíš dvě kresby na téma: "{theme}". '
+        f'První přiložený obrázek je KRESBA A, druhý je KRESBA B. '
+        f'Porovnej je a rozhodni, která se VÍC podobá zadanému tématu. '
+        f'Pokud jsou stejně dobré/špatné, vrať "draw". '
+        f'Odpověz POUZE čistým JSON, bez markdown, bez tří backtiků, podle této šablony:\n'
+        f'{{"winner": "A" nebo "B" nebo "draw", "duvod": "krátké, vtipné a hezké vysvětlení v češtině, max 2 věty"}}'
+    )
+
+    try:
+        response = gemini_client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=[
+                genai_types.Part.from_bytes(data=image_a_bytes, mime_type='image/png'),
+                genai_types.Part.from_bytes(data=image_b_bytes, mime_type='image/png'),
+                prompt,
+            ],
+        )
+        text = (response.text or '').strip()
+        # Občas Gemini přidá ```json ... ``` wrapper, ošetřit
+        if text.startswith('```'):
+            # vyseknout obsah mezi prvním a posledním ```
+            inner = text.strip('`')
+            if inner.lower().startswith('json'):
+                inner = inner[4:]
+            text = inner.strip()
+        result = json.loads(text)
+        winner = result.get('winner', 'draw')
+        if winner not in ('A', 'B', 'draw'):
+            winner = 'draw'
+        duvod = str(result.get('duvod') or 'AI nezanechala komentář.')[:300]
+        return {'winner': winner, 'duvod': duvod}
+    except Exception as e:
+        return {
+            'winner': 'draw',
+            'duvod': f'AI měla chvilku — nepodařilo se vyhodnotit ({str(e)[:80]}). Berte oba.',
+        }
+
+
+@socketio.on('dc_create_room')
+def on_dc_create_room(data=None):
+    username = session.get('username')
+    if not username:
+        emit('error', {'message': 'Musíš být přihlášený.'})
         return
-    room = ROOMS.get(room_id)
+    # Sdílíme generátor s piškvorkami, ale ověříme, že ID nekoliduje
+    while True:
+        room_id = gen_room_id()
+        if room_id not in DC_ROOMS:
+            break
+    DC_ROOMS[room_id] = {
+        'id': room_id,
+        'players': [username],
+        'symbols': {username: 'A'},
+        'scores': {username: 0},
+        'submissions': {},
+        'status': 'waiting',
+        'theme': None,
+        'result': None,
+        'rounds_played': 0,
+        'wants_next': set(),
+    }
+    join_room(room_id)
+    SID_TO_DC_ROOM[request.sid] = room_id
+    emit('dc_room_state', dc_room_state(DC_ROOMS[room_id]))
+
+
+@socketio.on('dc_join_room')
+def on_dc_join_room(data):
+    username = session.get('username')
+    if not username:
+        emit('error', {'message': 'Musíš být přihlášený.'})
+        return
+    room_id = (data or {}).get('room_id', '').upper()
+    room = DC_ROOMS.get(room_id)
     if not room:
+        emit('error', {'message': 'Místnost neexistuje (nebo už skončila).'})
         return
-    # Vždy oznámit soupeři odchod (i po hře — soupeř mohl čekat na rematch)
-    socketio.emit('opponent_left', {'room_id': room_id}, to=room_id)
-    if room['status'] in ('waiting', 'playing'):
-        room['status'] = 'abandoned'
-    ROOMS.pop(room_id, None)
+    join_room(room_id)
+    SID_TO_DC_ROOM[request.sid] = room_id
+    if username in room['players']:
+        emit('dc_room_state', dc_room_state(room))
+        return
+    if len(room['players']) >= 2:
+        emit('error', {'message': 'Místnost je plná.'})
+        return
+    room['players'].append(username)
+    room['symbols'][username] = 'B'
+    room['scores'][username] = 0
+    room['status'] = 'drawing'
+    room['theme'] = dc_pick_theme()
+    socketio.emit('dc_room_state', dc_room_state(room), to=room_id)
+
+
+@socketio.on('dc_submit_drawing')
+def on_dc_submit_drawing(data):
+    username = session.get('username')
+    if not username:
+        return
+    room_id = SID_TO_DC_ROOM.get(request.sid)
+    room = DC_ROOMS.get(room_id) if room_id else None
+    if not room or room['status'] != 'drawing':
+        return
+    if username not in room['players']:
+        return
+    image_b64 = (data or {}).get('image')
+    if not image_b64 or not isinstance(image_b64, str):
+        emit('error', {'message': 'Neplatný obrázek.'})
+        return
+    # Limit velikosti (~5MB base64)
+    if len(image_b64) > 5 * 1024 * 1024:
+        emit('error', {'message': 'Obrázek je moc velký.'})
+        return
+
+    room['submissions'][username] = image_b64
+
+    if len(room['submissions']) == 2:
+        # Oba poslali → AI hodnotí
+        room['status'] = 'judging'
+        socketio.emit('dc_room_state', dc_room_state(room), to=room_id)
+
+        player_a, player_b = room['players']
+        verdict = judge_drawings(
+            room['submissions'][player_a],
+            room['submissions'][player_b],
+            room['theme'],
+        )
+
+        winner_user = None
+        if verdict['winner'] == 'A':
+            winner_user = player_a
+        elif verdict['winner'] == 'B':
+            winner_user = player_b
+
+        room['result'] = {
+            'winner': winner_user,           # None = remíza
+            'duvod': verdict['duvod'],
+            'theme': room['theme'],
+        }
+        if winner_user:
+            room['scores'][winner_user] = room['scores'].get(winner_user, 0) + 1
+        room['status'] = 'over'
+        room['rounds_played'] = room.get('rounds_played', 0) + 1
+
+        socketio.emit('dc_room_state', dc_room_state(room), to=room_id)
+    else:
+        # Jen oznámit, že jeden už poslal (druhý vidí v UI)
+        socketio.emit('dc_room_state', dc_room_state(room), to=room_id)
+
+
+@socketio.on('dc_next_round')
+def on_dc_next_round(data=None):
+    username = session.get('username')
+    if not username:
+        return
+    room_id = SID_TO_DC_ROOM.get(request.sid)
+    room = DC_ROOMS.get(room_id) if room_id else None
+    if not room or room['status'] != 'over' or username not in room['players']:
+        return
+
+    room['wants_next'].add(username)
+
+    if len(room['wants_next']) >= 2:
+        room['submissions'] = {}
+        room['status'] = 'drawing'
+        room['theme'] = dc_pick_theme()
+        room['result'] = None
+        room['wants_next'] = set()
+
+    socketio.emit('dc_room_state', dc_room_state(room), to=room_id)
 
 
 # === Run ===
