@@ -479,45 +479,60 @@ def judge_drawings(image_a_b64: str, image_b_b64: str, theme: str) -> dict:
         image_a_bytes = base64.b64decode(image_a_b64)
         image_b_bytes = base64.b64decode(image_b_b64)
     except Exception as e:
+        print(f'[DC] base64 decode error: {e}', flush=True)
         return {'winner': 'draw', 'duvod': f'Chyba při dekódování obrázků: {e}'}
 
     prompt = (
         f'Jsi vtipný porotce amatérských kreseb. Hodnotíš dvě kresby na téma: "{theme}". '
         f'První přiložený obrázek je KRESBA A, druhý je KRESBA B. '
+        f'I když je některá z kreseb prázdná nebo skoro prázdná, dokresli si o ní úsudek a hodnoť. '
         f'Porovnej je a rozhodni, která se VÍC podobá zadanému tématu. '
-        f'Pokud jsou stejně dobré/špatné, vrať "draw". '
-        f'Odpověz POUZE čistým JSON, bez markdown, bez tří backtiků, podle této šablony:\n'
-        f'{{"winner": "A" nebo "B" nebo "draw", "duvod": "krátké, vtipné a hezké vysvětlení v češtině, max 2 věty"}}'
+        f'Pokud jsou si VELMI podobné kvality, vrať "draw". '
+        f'Vrať JSON s polem "winner" ("A" / "B" / "draw") a "duvod" '
+        f'(krátké vtipné vysvětlení v češtině, max 2 věty).'
     )
 
-    try:
-        response = gemini_client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=[
-                genai_types.Part.from_bytes(data=image_a_bytes, mime_type='image/png'),
-                genai_types.Part.from_bytes(data=image_b_bytes, mime_type='image/png'),
-                prompt,
-            ],
-        )
-        text = (response.text or '').strip()
-        # Občas Gemini přidá ```json ... ``` wrapper, ošetřit
-        if text.startswith('```'):
-            # vyseknout obsah mezi prvním a posledním ```
-            inner = text.strip('`')
-            if inner.lower().startswith('json'):
-                inner = inner[4:]
-            text = inner.strip()
-        result = json.loads(text)
-        winner = result.get('winner', 'draw')
-        if winner not in ('A', 'B', 'draw'):
-            winner = 'draw'
-        duvod = str(result.get('duvod') or 'AI nezanechala komentář.')[:300]
-        return {'winner': winner, 'duvod': duvod}
-    except Exception as e:
-        return {
-            'winner': 'draw',
-            'duvod': f'AI měla chvilku — nepodařilo se vyhodnotit ({str(e)[:80]}). Berte oba.',
-        }
+    # Postupně zkusíme tři stabilní vision modely (pokud první vyhodí chybu, jdeme dál)
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    last_error = None
+
+    for model_name in models_to_try:
+        try:
+            response = gemini_client.models.generate_content(
+                model=model_name,
+                contents=[
+                    genai_types.Part.from_bytes(data=image_a_bytes, mime_type='image/png'),
+                    genai_types.Part.from_bytes(data=image_b_bytes, mime_type='image/png'),
+                    prompt,
+                ],
+                config=genai_types.GenerateContentConfig(
+                    response_mime_type='application/json',
+                ),
+            )
+            text = (response.text or '').strip()
+            print(f'[DC] Gemini model={model_name} raw: {text[:200]}', flush=True)
+            # Pokud by Gemini přesto vrátila ```json wrapper, ošetřit
+            if text.startswith('```'):
+                inner = text.strip('`')
+                if inner.lower().startswith('json'):
+                    inner = inner[4:]
+                text = inner.strip()
+            result = json.loads(text)
+            winner = result.get('winner', 'draw')
+            if winner not in ('A', 'B', 'draw'):
+                winner = 'draw'
+            duvod = str(result.get('duvod') or 'AI nezanechala komentář.')[:300]
+            return {'winner': winner, 'duvod': duvod}
+        except Exception as e:
+            last_error = f'{type(e).__name__}: {str(e)[:200]}'
+            print(f'[DC] Gemini model={model_name} FAILED: {last_error}', flush=True)
+            continue
+
+    # Všechny modely selhaly
+    return {
+        'winner': 'draw',
+        'duvod': f'AI měla chvilku — žádný model nezvládl. Berte oba.',
+    }
 
 
 @socketio.on('dc_create_room')

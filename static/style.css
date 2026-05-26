@@ -510,6 +510,48 @@ body.dc-active .deco-o {
   #dc-canvas { max-width: 95vw; }
 }
 
+/* AI judging overlay (loading spinner) */
+#dc-judging-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  text-align: center;
+  padding: 16px;
+}
+
+#dc-judging-overlay.hidden { display: none !important; }
+
+.dc-spinner {
+  width: 90px;
+  height: 90px;
+  border: 8px solid rgba(255, 255, 255, 0.18);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: dc-spin 1s linear infinite;
+  margin-bottom: 28px;
+}
+
+@keyframes dc-spin {
+  to { transform: rotate(360deg); }
+}
+
+.dc-spinner-text {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.dc-spinner-subtext {
+  margin-top: 10px;
+  opacity: 0.8;
+  font-size: 1rem;
+}
+
 .big-btn.diff-easy   { background: #10b981; color: white; }
 .big-btn.diff-easy:hover   { background: #0ea674; }
 .big-btn.diff-medium { background: #f59e0b; color: white; }

@@ -36,11 +36,25 @@
     </div>
   </div>
 
-  <!-- Hlavní menu -->
+  <!-- Výběr hry — první obrazovka po loginu -->
+  <div id="game-select-screen" class="screen hidden">
+    <header>
+      <span>Ahoj, <strong class="welcome-name"></strong></span>
+      <button class="logout-btn link-btn" type="button">Odhlásit</button>
+    </header>
+    <h1>Co chceš hrát?</h1>
+    <div class="buttons">
+      <button id="choose-piskvorky-btn" class="big-btn primary" type="button">⭕ Piškvorky</button>
+      <button id="choose-dc-btn" class="big-btn dc" type="button">🎨 Drawing Competition</button>
+    </div>
+  </div>
+
+  <!-- Hlavní menu Piškvorek -->
   <div id="menu-screen" class="screen hidden">
     <header>
-      <span>Ahoj, <strong id="welcome-name"></strong></span>
-      <button id="logout-btn" class="link-btn" type="button">Odhlásit</button>
+      <button id="menu-back-btn" class="link-btn" type="button">← Zpět</button>
+      <span>Ahoj, <strong class="welcome-name"></strong></span>
+      <button class="logout-btn link-btn" type="button">Odhlásit</button>
     </header>
     <h1>Piškvorky</h1>
 
@@ -67,7 +81,6 @@
       <button id="play-classic-btn" class="big-btn primary" type="button">Hrát 3×3 (vs AI)</button>
       <button id="play-open-btn" class="big-btn" type="button">Hrát velkou plochu — 5 v řadě (vs AI)</button>
       <button id="play-pvp-btn" class="big-btn pvp" type="button">Hrát s kamarádem</button>
-      <button id="play-dc-btn" class="big-btn dc" type="button">🎨 Drawing Competition</button>
     </div>
   </div>
 
@@ -225,6 +238,22 @@
       <button id="dc-next-btn" class="big-btn dc" type="button">Hrát další kolo</button>
       <p id="dc-next-hint" class="feedback dark"></p>
     </div>
+  </div>
+
+  <!-- Overlay s loading spinnerem — zobrazí se, když AI vyhodnocuje kresby -->
+  <div id="dc-judging-overlay" class="hidden" role="status" aria-live="polite">
+    <div class="dc-judging-card">
+      <div class="dc-spinner" aria-hidden="true"></div>
+      <p class="dc-judging-title">🤖 AI vyhodnocuje kresby</p>
+      <p class="dc-judging-sub">Za chvilku to bude…</p>
+    </div>
+  </div>
+
+  <!-- Drawing Competition — overlay zatímco AI hodnotí -->
+  <div id="dc-judging-overlay" class="hidden" role="status" aria-live="polite">
+    <div class="dc-spinner"></div>
+    <div class="dc-spinner-text">🤖 AI vyhodnocuje kresby…</div>
+    <div class="dc-spinner-subtext">Chvíli to může trvat. Vydrž!</div>
   </div>
 
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>

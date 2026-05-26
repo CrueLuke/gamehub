@@ -52,9 +52,29 @@ function show(screenId) {
   document.body.classList.toggle('dc-active', target.classList.contains('dc-theme'));
 }
 
+// Aktualizuje uvítací jméno na všech obrazovkách, kde se zobrazuje
+function updateWelcomeName() {
+  if (!currentUser) return;
+  document.querySelectorAll('.welcome-name').forEach(el => {
+    el.textContent = currentUser.username;
+  });
+}
+
+// showMenu = "domovská" obrazovka po loginu = výběr Piškvorky / Drawing Competition.
+// Z DC backů a po logoutech se sem vracíme.
 function showMenu() {
   if (!currentUser) { show('auth-screen'); return; }
-  document.getElementById('welcome-name').textContent = currentUser.username;
+  updateWelcomeName();
+  document.getElementById('pvp-scores').classList.add('hidden');
+  cancelTurnTimer();
+  hideJudgingOverlay();
+  show('game-select-screen');
+}
+
+// Vstup do menu Piškvorek (po výběru z game-select-screen nebo zpět z piškvorkové podmenu).
+function showPiskvorkyMenu() {
+  if (!currentUser) { show('auth-screen'); return; }
+  updateWelcomeName();
   renderStats();
   document.getElementById('pvp-scores').classList.add('hidden');
   cancelTurnTimer();
@@ -98,13 +118,17 @@ document.getElementById('auth-form').addEventListener('submit', async (e) => {
   }
 });
 
-document.getElementById('logout-btn').addEventListener('click', async () => {
-  try { await api('/api/logout', 'POST'); } catch (_) {}
-  currentUser = null;
-  if (socket) { socket.disconnect(); socket = null; }
-  cancelTurnTimer();
-  setAuthMode('login');
-  show('auth-screen');
+// Logout je dostupný z game-select-screen i z piškvorkového menu (oba tlačítka mají class logout-btn)
+document.querySelectorAll('.logout-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    try { await api('/api/logout', 'POST'); } catch (_) {}
+    currentUser = null;
+    if (socket) { socket.disconnect(); socket = null; }
+    cancelTurnTimer();
+    hideJudgingOverlay();
+    setAuthMode('login');
+    show('auth-screen');
+  });
 });
 
 function onLoginSuccess() {
@@ -167,10 +191,34 @@ function connectSocket() {
   });
 }
 
+// === Game select (úvodní výběr Piškvorky / Drawing Competition) ===
+
+document.getElementById('choose-piskvorky-btn').addEventListener('click', showPiskvorkyMenu);
+
+document.getElementById('choose-dc-btn').addEventListener('click', () => {
+  if (!socket) connectSocket();
+  const sendCreate = () => socket.emit('dc_create_room');
+  if (socket.connected) sendCreate();
+  else socket.once('connect', sendCreate);
+});
+
+// Zpět z piškvorkového menu → zpět na výběr hry
+document.getElementById('menu-back-btn').addEventListener('click', showMenu);
+
+// === AI judging overlay (spinner při vyhodnocování kreseb) ===
+
+function showJudgingOverlay() {
+  document.getElementById('dc-judging-overlay').classList.remove('hidden');
+}
+
+function hideJudgingOverlay() {
+  document.getElementById('dc-judging-overlay').classList.add('hidden');
+}
+
 // === PvP UI handlery ===
 
 document.getElementById('play-pvp-btn').addEventListener('click', () => show('pvp-mode-screen'));
-document.getElementById('pvp-mode-back-btn').addEventListener('click', showMenu);
+document.getElementById('pvp-mode-back-btn').addEventListener('click', showPiskvorkyMenu);
 
 document.querySelectorAll('[data-pvp-mode]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -184,7 +232,7 @@ document.querySelectorAll('[data-pvp-mode]').forEach(btn => {
 document.getElementById('pvp-waiting-cancel-btn').addEventListener('click', () => {
   if (socket) socket.emit('leave_room');
   pvpRoom = null;
-  showMenu();
+  showPiskvorkyMenu();
 });
 
 document.getElementById('pvp-copy-btn').addEventListener('click', async () => {
@@ -308,7 +356,7 @@ let currentDifficulty = 'hard';
 
 document.getElementById('play-classic-btn').addEventListener('click', () => showDifficulty('classic'));
 document.getElementById('play-open-btn').addEventListener('click', () => showDifficulty('open'));
-document.getElementById('diff-back-btn').addEventListener('click', showMenu);
+document.getElementById('diff-back-btn').addEventListener('click', showPiskvorkyMenu);
 
 document.querySelectorAll('[data-difficulty]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -332,15 +380,15 @@ document.getElementById('back-btn').addEventListener('click', () => {
     if (socket) socket.emit('leave_room');
     pvpRoom = null;
   }
-  showMenu();
+  showPiskvorkyMenu();
 });
 
 playAgainBtn.addEventListener('click', () => {
   if (gameKind === 'ai') {
     startAiGame(currentModeName);
   } else if (!pvpRoom) {
-    // Soupeř odešel — místnost je zrušená, jen zpět do menu
-    showMenu();
+    // Soupeř odešel — místnost je zrušená, jen zpět do piškvorkového menu
+    showPiskvorkyMenu();
   } else {
     // PvP: požádat o rematch (server čeká, až obě strany kliknou)
     socket.emit('rematch');
@@ -838,16 +886,18 @@ document.getElementById('dc-clear-btn').addEventListener('click', () => {
 // Odeslat kresbu
 document.getElementById('dc-submit-btn').addEventListener('click', dcSubmit);
 
-function dcSubmit() {
+function dcSubmit(auto = false) {
   if (dcSubmitted) return;
   if (!socket || !socket.connected) return;
-  const dataUrl = dcCanvas.toDataURL('image/png');
+  const dataUrl = dcCanvas.toDataURL('image/png');  // sebere aktuální stav kresby (i částečný)
   socket.emit('dc_submit_drawing', { image: dataUrl });
   dcSubmitted = true;
   const btn = document.getElementById('dc-submit-btn');
   btn.disabled = true;
-  btn.textContent = 'Odesláno ✓';
-  document.getElementById('dc-status').textContent = 'Čeká se na soupeře…';
+  btn.textContent = auto ? 'Čas vypršel — odesláno' : 'Odesláno ✓';
+  document.getElementById('dc-status').textContent = auto
+    ? 'Čas vypršel, posílám tvoji kresbu. Čeká se na soupeře…'
+    : 'Čeká se na soupeře…';
 }
 
 // === DC timer ===
@@ -862,7 +912,7 @@ function startDcTimer(seconds = 90) {
     s--;
     if (s < 0) {
       stopDcTimer();
-      if (!dcSubmitted) dcSubmit();  // auto-submit při vypršení
+      if (!dcSubmitted) dcSubmit(true);  // auto-submit při vypršení (vezme co je na canvasu)
       return;
     }
     el.textContent = s;
@@ -878,17 +928,12 @@ function stopDcTimer() {
 }
 
 // === DC menu + obrazovky ===
-
-document.getElementById('play-dc-btn').addEventListener('click', () => {
-  if (!socket) connectSocket();
-  const sendCreate = () => socket.emit('dc_create_room');
-  if (socket.connected) sendCreate();
-  else socket.once('connect', sendCreate);
-});
+// (tlačítko "Drawing Competition" je teď na úvodní game-select obrazovce, viz choose-dc-btn)
 
 document.getElementById('dc-waiting-cancel-btn').addEventListener('click', () => {
   if (socket) socket.emit('leave_room');
   dcRoom = null; dcCurrentTheme = null; stopDcTimer();
+  hideJudgingOverlay();
   showMenu();
 });
 
@@ -896,12 +941,14 @@ document.getElementById('dc-back-btn').addEventListener('click', () => {
   if (!confirm('Opravdu opustit hru? Tvoje kresba se ztratí.')) return;
   if (socket) socket.emit('leave_room');
   dcRoom = null; dcCurrentTheme = null; stopDcTimer();
+  hideJudgingOverlay();
   showMenu();
 });
 
 document.getElementById('dc-result-back-btn').addEventListener('click', () => {
   if (socket) socket.emit('leave_room');
   dcRoom = null; dcCurrentTheme = null; stopDcTimer();
+  hideJudgingOverlay();
   showMenu();
 });
 
@@ -924,6 +971,7 @@ document.getElementById('dc-copy-btn').addEventListener('click', async () => {
 });
 
 function showDcWaiting(state) {
+  hideJudgingOverlay();
   const url = `${location.origin}${location.pathname}?dcroom=${state.room_id}`;
   document.getElementById('dc-invite-url').value = url;
   document.getElementById('dc-copy-feedback').textContent = '';
@@ -935,6 +983,7 @@ function enterDcGame(state) {
   dcSubmitted = false;
   dcCurrentTheme = state.theme;
   dcClearCanvas();
+  hideJudgingOverlay();   // nové kolo → schovat případný spinner
   document.getElementById('dc-theme-text').textContent = state.theme || '…';
   const opponent = state.players.find(p => p !== currentUser.username) || 'soupeř';
   document.getElementById('dc-status').textContent = `Kresli! (soupeř: ${opponent})`;
@@ -967,10 +1016,12 @@ function updateDcGameStatus(state) {
 function showDcJudging(state) {
   document.getElementById('dc-status').textContent = '🤖 AI hodnotí kresby…';
   stopDcTimer();
+  showJudgingOverlay();   // velký overlay se spinnerem, ať je jasné, že to zrovna běží
 }
 
 function showDcResult(state) {
   stopDcTimer();
+  hideJudgingOverlay();   // verdikt přišel → spinner pryč
   const me = currentUser.username;
   const [pa, pb] = state.players;
   const r = state.result || {};
@@ -1047,6 +1098,7 @@ function attachDcSocketListeners() {
                     || !document.getElementById('dc-waiting-screen').classList.contains('hidden')
                     || !document.getElementById('dc-result-screen').classList.contains('hidden');
     if (!isDcScreen) return;
+    hideJudgingOverlay();
     alert('😶 Soupeř opustil hru.');
     dcRoom = null; stopDcTimer();
     showMenu();
