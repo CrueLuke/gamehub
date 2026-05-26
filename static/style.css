@@ -244,7 +244,82 @@ body.dc-active {
   background: linear-gradient(135deg, #f97316 0%, #b91c1c 100%);
 }
 
-body.dc-active .deco { opacity: 0.10; }
+body.dc-active .deco { opacity: 0.13; }
+
+/* Na DC obrazovkách se z X/O stanou kreslířské motivy — štětec a paleta */
+body.dc-active .deco-x {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='42' y='45' width='16' height='40' fill='white' rx='3'/><rect x='37' y='34' width='26' height='13' fill='white' rx='2'/><path d='M40 34 L60 34 L54 16 L46 16 Z' fill='white'/></svg>");
+}
+
+body.dc-active .deco-o {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='34' fill='none' stroke='white' stroke-width='8'/><circle cx='35' cy='40' r='4.5' fill='white'/><circle cx='55' cy='34' r='4.5' fill='white'/><circle cx='70' cy='50' r='4.5' fill='white'/><circle cx='60' cy='68' r='4.5' fill='white'/></svg>");
+}
+
+/* V DC módu vyměníme X a O za štětce a palety. Stejné pozice/velikosti,
+   jen jiná SVG. */
+body.dc-active .deco-x {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><line x1='80' y1='20' x2='42' y2='58' stroke='white' stroke-width='10' stroke-linecap='round'/><path d='M28 72 L46 54 L62 70 L46 86 Z' stroke='white' stroke-width='6' fill='none' stroke-linejoin='round'/></svg>");
+}
+
+body.dc-active .deco-o {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><ellipse cx='50' cy='52' rx='36' ry='28' stroke='white' stroke-width='7' fill='none'/><circle cx='78' cy='52' r='5' fill='white'/><circle cx='38' cy='40' r='4' fill='white'/><circle cx='55' cy='34' r='4' fill='white'/><circle cx='32' cy='58' r='4' fill='white'/><circle cx='48' cy='68' r='4' fill='white'/></svg>");
+}
+
+/* ===== AI judging overlay — loading spinner, když AI hodnotí kresby ===== */
+#dc-judging-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: dc-overlay-in 0.2s ease-out;
+}
+
+@keyframes dc-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.dc-judging-card {
+  background: white;
+  border-radius: 18px;
+  padding: 32px 36px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  max-width: 320px;
+  width: 100%;
+}
+
+.dc-spinner {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 18px;
+  border: 6px solid #fee2e2;
+  border-top-color: #ef4444;
+  border-radius: 50%;
+  animation: dc-spin 0.9s linear infinite;
+}
+
+@keyframes dc-spin {
+  to { transform: rotate(360deg); }
+}
+
+.dc-judging-title {
+  color: #1f2937;
+  font-weight: 700;
+  font-size: 1.15rem;
+  margin-bottom: 4px;
+}
+
+.dc-judging-sub {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
 
 /* Téma + časomíra */
 #dc-theme-banner {
