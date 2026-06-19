@@ -158,6 +158,16 @@ function connectSocket() {
   if (socket) return;
   socket = io({ autoConnect: true });
 
+  // Po (re)connectu — třeba když mobil uspal Safari a vrátíme se z WhatsApp —
+  // automaticky znovu vstoupíme do místnosti, ve které jsme byli.
+  socket.on('connect', () => {
+    if (dcRoom && dcRoom.room_id && ['waiting', 'drawing', 'judging', 'over'].includes(dcRoom.status)) {
+      socket.emit('dc_join_room', { room_id: dcRoom.room_id });
+    } else if (pvpRoom && pvpRoom.room_id && ['waiting', 'playing', 'over'].includes(pvpRoom.status)) {
+      socket.emit('join_room', { room_id: pvpRoom.room_id });
+    }
+  });
+
   socket.on('room_state', state => {
     pvpRoom = state;
     if (state.status === 'waiting') {

@@ -11,6 +11,7 @@ import random
 import secrets
 import sqlite3
 import string
+import time
 
 from flask import Flask, jsonify, request, send_from_directory, session
 from flask_socketio import SocketIO, emit, join_room
@@ -254,6 +255,14 @@ def on_create_room(data):
     if not username:
         emit('error', {'message': 'Musíš být přihlášený.'})
         return
+    # Pokud už máš nedohranou waiting místnost, vrátíme ti ji místo vytvoření nové.
+    # Praktické pro případ, kdy uživatel klikne tlačítko podruhé.
+    for rid, existing in ROOMS.items():
+        if existing.get('status') == 'waiting' and username in existing.get('players', []):
+            join_room(rid)
+            SID_TO_ROOM[request.sid] = rid
+            emit('room_state', room_state(existing))
+            return
     mode_name = (data or {}).get('mode', 'classic')
     if mode_name not in MODE_CONFIG:
         emit('error', {'message': 'Neznámý mód.'})
@@ -276,6 +285,7 @@ def on_create_room(data):
         'winner': None,
         'winning_line': None,
         'last_move': None,
+        'created_at': time.time(),
     }
     join_room(room_id)
     SID_TO_ROOM[request.sid] = room_id
@@ -406,17 +416,45 @@ def handle_disconnect(sid):
     if room_id:
         room = ROOMS.get(room_id)
         if room:
-            socketio.emit('opponent_left', {'room_id': room_id}, to=room_id)
-            if room['status'] in ('waiting', 'playing'):
-                room['status'] = 'abandoned'
-            ROOMS.pop(room_id, None)
+            # WAITING místnost (čeká se na druhého hráče) NEMAZAT —
+            # mobil ti uspí Safari a místnost by se ztratila ještě než se kamarád připojí.
+            # Stale waiting místnosti uklidí cleanup_stale_rooms() po 10 minutách.
+            if room['status'] == 'waiting':
+                pass
+            else:
+                socketio.emit('opponent_left', {'room_id': room_id}, to=room_id)
+                if room['status'] == 'playing':
+                    room['status'] = 'abandoned'
+                ROOMS.pop(room_id, None)
     # Drawing Competition cleanup
     dc_room_id = SID_TO_DC_ROOM.pop(sid, None)
     if dc_room_id:
         dc_room = DC_ROOMS.get(dc_room_id)
         if dc_room:
-            socketio.emit('dc_opponent_left', {'room_id': dc_room_id}, to=dc_room_id)
-            DC_ROOMS.pop(dc_room_id, None)
+            if dc_room['status'] == 'waiting':
+                pass  # totéž — nech místnost žít
+            else:
+                socketio.emit('dc_opponent_left', {'room_id': dc_room_id}, to=dc_room_id)
+                DC_ROOMS.pop(dc_room_id, None)
+
+
+# Periodicky uklidí waiting místnosti, na které nikdo nepřišel — aby paměť necnula
+WAITING_ROOM_TTL_SECONDS = 600  # 10 minut
+
+def cleanup_stale_rooms():
+    while True:
+        socketio.sleep(60)
+        now = time.time()
+        for rid in list(ROOMS.keys()):
+            r = ROOMS.get(rid)
+            if r and r.get('status') == 'waiting' and (now - r.get('created_at', now)) > WAITING_ROOM_TTL_SECONDS:
+                ROOMS.pop(rid, None)
+                print(f'[cleanup] removed stale ROOMS {rid}', flush=True)
+        for rid in list(DC_ROOMS.keys()):
+            r = DC_ROOMS.get(rid)
+            if r and r.get('status') == 'waiting' and (now - r.get('created_at', now)) > WAITING_ROOM_TTL_SECONDS:
+                DC_ROOMS.pop(rid, None)
+                print(f'[cleanup] removed stale DC_ROOMS {rid}', flush=True)
 
 
 # === Drawing Competition (DC) ===
@@ -541,6 +579,14 @@ def on_dc_create_room(data=None):
     if not username:
         emit('error', {'message': 'Musíš být přihlášený.'})
         return
+    # Pokud už máš nedohranou waiting místnost, vrátíme ti ji
+    # (např. když mobil uspal Safari a uživatel klikl DC znovu)
+    for rid, existing in DC_ROOMS.items():
+        if existing.get('status') == 'waiting' and username in existing.get('players', []):
+            join_room(rid)
+            SID_TO_DC_ROOM[request.sid] = rid
+            emit('dc_room_state', dc_room_state(existing))
+            return
     # Sdílíme generátor s piškvorkami, ale ověříme, že ID nekoliduje
     while True:
         room_id = gen_room_id()
@@ -557,6 +603,7 @@ def on_dc_create_room(data=None):
         'result': None,
         'rounds_played': 0,
         'wants_next': set(),
+        'created_at': time.time(),
     }
     join_room(room_id)
     SID_TO_DC_ROOM[request.sid] = room_id
@@ -672,6 +719,7 @@ def on_dc_next_round(data=None):
 
 if __name__ == '__main__':
     init_db()
+    socketio.start_background_task(cleanup_stale_rooms)
     port = int(os.environ.get('PORT', 5001))
     print(f'Server běží na http://localhost:{port}')
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
